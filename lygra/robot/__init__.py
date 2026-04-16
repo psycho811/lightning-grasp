@@ -10,18 +10,44 @@ from lygra.robot.leap import Leap
 from lygra.robot.dclaw import DClaw
 
 
-def build_robot(name, urdf_path=None):
-    if name == 'allegro':
-        return Allegro(urdf_path=urdf_path)
-    
-    elif name == 'leap':
-        return Leap(urdf_path=urdf_path)
-    
-    elif name == 'shadow':
-        return Shadow(urdf_path=urdf_path)
+class RobotFactory:
+    _registry = {}
 
-    elif name == 'dclaw':
-        return DClaw(urdf_path=urdf_path)
-    
-    else:
-        assert False, f"Robot {name} undefined."
+    @classmethod
+    def register(cls, type_name, proc_cls):
+        """Manual registration."""
+        if type_name in cls._registry:
+            raise KeyError(f"Robot type '{type_name}' is already registered with {cls._registry[type_name]}")
+        cls._registry[type_name] = proc_cls
+
+    @classmethod
+    def register_decorator(cls, type_name):
+        """Decorator-based registration."""
+        def decorator(proc_cls):
+            if type_name in cls._registry:
+                raise KeyError(f"Robot type '{type_name}' is already registered with {cls._registry[type_name]}")
+            cls._registry[type_name] = proc_cls
+            return proc_cls
+        return decorator
+
+    @classmethod
+    def create(cls, name, **kwargs):
+        proc_cls = cls._registry.get(name)
+
+        if proc_cls is None:
+            raise ValueError(
+                f"Robot type '{name}' is not supported. "
+                f"Available types: {list(cls._registry.keys())}"
+            )
+
+        return proc_cls(**kwargs)
+
+
+RobotFactory.register("allegro", Allegro)
+RobotFactory.register("shadow", Shadow)
+RobotFactory.register("leap", Leap)
+RobotFactory.register("dclaw", DClaw)
+
+
+def build_robot(name, urdf_path=None, **kwargs):
+    return RobotFactory.create(name, urdf_path=urdf_path, **kwargs)

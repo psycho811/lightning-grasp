@@ -19,6 +19,9 @@ class RobotInterface(ABC):
         self.tree = None
         return 
 
+    def get_white_list_pairs(self):
+        return []
+
     def get_default_urdf_path(self):
         return None
 

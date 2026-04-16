@@ -268,7 +268,7 @@ class ContactField:
             n = origin.shape[0] // (end - begin)
             field_vec_ids = np.zeros(origin.shape[0], dtype=np.int32)
             for j in range(end - begin):
-                field_vec_ids[j * n : (j + 1) : n] = j
+                field_vec_ids[j * n : (j + 1) * n] = j
 
             self.field_vec_origin.append(origin)
             self.field_vec_direction.append(direction)
