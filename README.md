@@ -96,7 +96,12 @@ The system includes several tunable parameters to optimize performance for your 
 ## Setup Your Model
 There are several examples in ``lygra/robot/`` folder. You can refer to ``lygra/robot/allegro.py`` for an tutorial. Basically, you simply need to setup a config object that specifies the contact field rules (i.e. which patches to use defined by allowed normals), canonical object space (i.e. where to initialize the object), and some URDF metadata. That's it!
 
-**Setting Up Collision** You may need to ``get_white_list_pairs()`` the function to disable certain hand self collision check. If you find lightning grasp failed to synthesize grasp on your new model, is it very likely that the collision filter is not setup properly.
+**Setting Up Collision**  
+You may need to use `get_white_list_pairs()` to disable specific self-collision checks within the hand, please refer to ``lygra/robot/base.py`` for more information. If Lightning Grasp fails to synthesize grasps on a new model, it is likely that the collision filtering is not configured correctly.
+
+**Mimic Joints and Joint Order**  
+Ensure that `get_active_joints()` includes mimic joints. The generated joint positions `q` follow the ordering defined in `get_active_joints()`, but the returned values exclude mimic joints.
+
 
 ## Notes
 **Known Limitations**
