@@ -50,15 +50,19 @@ class IKGPUBufferPool:
     """ Memory Buffer Pool Used by IK Solver.
         We allocate a large buffer in advance based on our usage estimate.
     """
-    def __init__(self, n_dof, n_link, max_batch=32000, retry=10, max_contact=5):
+    def __init__(self, n_dof, n_link, n_actuated_dof=None, max_batch=32000, retry=10, max_contact=5):
+        if n_actuated_dof is None:
+            n_actuated_dof = n_dof
+
         self.gpu_memory_pool = TorchGPUBufferPool()
         self.n_dof = n_dof 
+        self.n_actuated_dof = n_actuated_dof
         self.n_link = n_link
 
         self.gpu_memory_pool.request("ik_joint",         (max_batch * retry, n_dof, 4, 4), torch.float32)
         self.gpu_memory_pool.request("ik_link",          (max_batch * retry, n_link, 4, 4), torch.float32)
-        self.gpu_memory_pool.request("ik_jac_result",    (n_dof, n_link * 6, max_batch * retry), torch.float32)
-        self.gpu_memory_pool.request("ik_jac_error",     (max_batch, retry, max_contact, 6, n_dof), torch.float32)
+        self.gpu_memory_pool.request("ik_jac_result",    (n_actuated_dof, n_link * 6, max_batch * retry), torch.float32)
+        self.gpu_memory_pool.request("ik_jac_error",     (max_batch, retry, max_contact, 6, n_actuated_dof), torch.float32)
 
     def get_ik_joint_buffer(self, batch, retry):
         return self.gpu_memory_pool.request("ik_joint", (batch * retry, self.n_dof, 4, 4))
@@ -67,10 +71,10 @@ class IKGPUBufferPool:
         return self.gpu_memory_pool.request("ik_link", (batch * retry, self.n_link, 4, 4))
 
     def get_ik_jac_result_buffer(self, batch, retry):
-        return self.gpu_memory_pool.request("ik_jac_result", (self.n_dof, self.n_link * 6, batch * retry))
+        return self.gpu_memory_pool.request("ik_jac_result", (self.n_actuated_dof, self.n_link * 6, batch * retry))
     
     def get_ik_jac_error_buffer(self, batch, retry, n_contact):
-        return self.gpu_memory_pool.request("ik_jac_error", (batch, retry, n_contact, 6, self.n_dof))
+        return self.gpu_memory_pool.request("ik_jac_error", (batch, retry, n_contact, 6, self.n_actuated_dof))
 
     # def get_ik_joint_buffer(self, shape):
     #     return self.gpu_memory_pool.request("ik_joint", shape)

@@ -17,6 +17,7 @@ import time
 from lygra.utils.robot_visualizer import RobotMesh
 from lygra.utils.transform_utils import batch_axis_angle, batch_translation
 from tqdm import tqdm 
+from dataclasses import dataclass
 
 
 def pair_list_to_dict(pairs):
@@ -35,12 +36,17 @@ def pair_list_to_dict(pairs):
     return dict(result)
 
 
+@dataclass
+class MimicJointInfo:
+    parent_name:        str
+    parent_actuated_id: int
+    multiplier:         float
+    offset:             float
+
+
 class KinematicsTree:
     """
     This is an auxiliary data structure for forward kinematics and jacobian calculation.
-    
-    TODO: This version does not support passive joints (mimic joint)
-          I need to finish this in a future update.
     """
     
     def __init__(self):
@@ -63,19 +69,32 @@ class KinematicsTree:
         self.joint_origins = []                                                   # input
         self.joint_limit_lowers = []
         self.joint_limit_uppers = []
-        self.active_joints = []
+        self.active_joints = []         # this includes both actuated joints and mimic joints.
+        self.actuated_joints = []
 
         self.active_joint_lowers = None 
         self.active_joint_uppers = None
+
+        self.actuated_joint_lowers = None 
+        self.actuated_joint_uppers = None
+
+        self.mimic_joint_info = {}
+        self.mimic_joint_info_id = {}   # index by id.
+
         self.base_link = None
         return 
 
     @staticmethod
-    def build_from_urdf(urdf_path, active_joint_names=None):
+    def build_from_urdf(urdf_path, active_joint_names=None, actuated_joint_names=None):
+        if isinstance(urdf_path, Path):
+            urdf_path = urdf_path.as_posix()
+
         urdf = URDF.load(urdf_path)
         tree = KinematicsTree()
         for l in urdf.links:
             tree.add_link(l.name)
+
+        mimic_joints = {}
 
         for j in urdf.joints:
             tree.add_joint(
@@ -90,11 +109,28 @@ class KinematicsTree:
             tree.add_edge(j.parent, j.name)
             tree.add_edge(j.name, j.child)
 
+            if j.mimic is not None:
+                parent = j.mimic.joint
+                multiplier = j.mimic.multiplier
+                offset = j.mimic.offset
+                mimic_joints[j.name] = MimicJointInfo(
+                    parent_name=parent, 
+                    parent_actuated_id=-1, 
+                    multiplier=multiplier, 
+                    offset=offset
+                )
+
         if active_joint_names is None:
             active_joints = urdf._actuated_joints                       # this will be the indexing order.
             active_joint_names = [j.name for j in active_joints] 
 
+        if actuated_joint_names is None:
+            actuated_joint_names = [j for j in active_joint_names if j not in mimic_joints]
+
         tree.set_active_joints(active_joint_names)
+        tree.set_actuated_joints(actuated_joint_names)
+
+        tree.set_mimic_joint_info(mimic_joints)
         return tree
 
     def get_base_link(self):
@@ -109,6 +145,9 @@ class KinematicsTree:
 
     def n_link(self):
         return len(self.links)
+
+    def n_actuated_dof(self):
+        return len(self.actuated_joints)
 
     def n_dof(self):
         return len(self.active_joints)
@@ -139,7 +178,7 @@ class KinematicsTree:
                 id0 = self.get_link_id(self.links[i])
                 id1 = self.get_link_id(self.links[j])
 
-                if (id0, id1) in filter_pair_list or id0 in filter_link_list or id1 in filter_link_list:
+                if (id0, id1) in filter_pair_list or (id1, id0) in filter_pair_list or id0 in filter_link_list or id1 in filter_link_list:
                     continue
 
                 body0 = link_body_id[id0]
@@ -216,6 +255,9 @@ class KinematicsTree:
         self.active_joints = active_joints 
         return
 
+    def set_actuated_joints(self, actuated_joints):
+        self.actuated_joints = actuated_joints
+
     def get_active_joint_limit(self):
         if self.active_joint_uppers is None:
             all_jids = [self.get_joint_id_from_active_joint_id(i) for i in range(len(self.active_joints))]
@@ -223,6 +265,14 @@ class KinematicsTree:
             self.active_joint_uppers = np.array([self.joint_limit_uppers[jid] for jid in all_jids]).astype(np.float32)
 
         return self.active_joint_lowers, self.active_joint_uppers
+
+    def get_actuated_joint_limit(self):
+        if self.actuated_joint_uppers is None:
+            all_jids = [self.get_joint_id_from_actuated_joint_id(i) for i in range(len(self.actuated_joints))]
+            self.actuated_joint_lowers = np.array([self.joint_limit_lowers[jid] for jid in all_jids]).astype(np.float32)
+            self.actuated_joint_uppers = np.array([self.joint_limit_uppers[jid] for jid in all_jids]).astype(np.float32)
+
+        return self.actuated_joint_lowers, self.actuated_joint_uppers
 
     def get_dependency_sets(self, observed_links):
         # Remove the observed links from the graph, and return the connected components.
@@ -284,13 +334,14 @@ class KinematicsTree:
         """
 
         Returns:
-            [n_link, n_dof] a binary matrix.
+            [n_link, n_actuated_dof] a binary matrix.
         """
-        out = np.zeros((self.n_link(), self.n_dof())).astype(np.float32)
+        out = np.zeros((self.n_link(), self.n_actuated_dof())).astype(np.float32)
         jacobian_pairs = self.get_jacobian_pairs(to_id=True)
 
         for joint_id, link_id in jacobian_pairs:
-            out[link_id, self.get_active_joint_id_from_joint_id(joint_id)] = 1.0
+            if self.joints[joint_id] in self.actuated_joints:
+                out[link_id, self.get_actuated_joint_id_from_joint_id(joint_id)] = 1.0
         return out
 
     def get_all_link_names(self):
@@ -300,6 +351,12 @@ class KinematicsTree:
         """ given an active joint id, returns its joint id"""
         if self.active_joints[active_joint_id] in self.joints:
             return self.joints.index(self.active_joints[active_joint_id])
+        return -1
+    
+    def get_joint_id_from_actuated_joint_id(self, actuated_joint_id):
+        """ given an active joint id, returns its joint id"""
+        if self.actuated_joints[actuated_joint_id] in self.joints:
+            return self.joints.index(self.actuated_joints[actuated_joint_id])
         return -1 
 
     def get_active_joint_id_from_joint_id(self, joint_id):
@@ -307,6 +364,31 @@ class KinematicsTree:
         if self.joints[joint_id] in self.active_joints:
             return self.active_joints.index(self.joints[joint_id])
         return -1 
+
+    def get_actuated_joint_id_from_joint_id(self, joint_id):
+        """ given a joint id, returns its actuated in the [n_dof] qpos tensor"""
+        if self.joints[joint_id] in self.actuated_joints:
+            return self.actuated_joints.index(self.joints[joint_id])
+        return -1 
+
+    def get_mimic_joint_info(self, to_id=False):
+        if to_id: 
+            # key = id in all joints (static, mimic, actuated)
+            return self.mimic_joint_info_in_id
+        return self.mimic_joint_info
+
+    def set_mimic_joint_info(self, mimic_joint_info_dict):
+        self.mimic_joint_info = {}
+        self.mimic_joint_info_in_id = {}
+
+        for joint_name, joint_info in mimic_joint_info_dict.items():
+            joint_info.parent_actuated_id = self.actuated_joints.index(joint_info.parent_name)
+            self.mimic_joint_info[joint_name] = joint_info
+            self.mimic_joint_info_in_id[self.joints.index(joint_name)] = joint_info
+           # print("MIMIC JOINT_NAME", joint_name, self.joints.index(joint_name), joint_info.parent_actuated_id, joint_info.parent_name)
+           # input()
+
+        return
 
     def get_all_joint_types(self):
         return self.joint_types 
@@ -409,6 +491,9 @@ def batch_fk(
     joint_child_link_ids = tree.get_all_joint_child_ids()
     joint_types = tree.get_all_joint_types() 
 
+    mimic_joint_info = tree.get_mimic_joint_info(to_id=True)
+    # we will need to fill in these 
+
     if all_joint_origins is None:
         all_joint_origins = torch.from_numpy(joint_origins).to(joint_q.device).unsqueeze(0).expand(batch_size, -1, -1, -1)  # input
     if all_joint_axis is None:
@@ -439,13 +524,19 @@ def batch_fk(
         if active_joint_id >= 0:
             all_joint_result[:, active_joint_id] = joint_pose 
 
+        if joint_id in mimic_joint_info:
+            mimic_info = mimic_joint_info[joint_id]
+            current_joint = joint_q[:, mimic_info.parent_actuated_id] * mimic_info.multiplier + mimic_info.offset
+        else:
+            current_joint = joint_q[:, tree.get_actuated_joint_id_from_joint_id(joint_id)] 
+
         # calculate child pose.
         if joint_type == 'revolute':
-            transform = batch_axis_angle(joint_q[:, active_joint_id], all_joint_axis[:, joint_id]) 
+            transform = batch_axis_angle(current_joint, all_joint_axis[:, joint_id]) 
             child_link_transform = torch.bmm(joint_pose, transform)
 
         elif joint_type == 'prismatic':
-            transform = batch_translation(joint_q[:, active_joint_id], all_joint_axis[:, joint_id]) # should be [B, 4, 4]
+            transform = batch_translation(current_joint, all_joint_axis[:, joint_id]) # should be [B, 4, 4]
             child_link_transform = torch.bmm(joint_pose, transform)
         
         else:
@@ -453,7 +544,7 @@ def batch_fk(
         
         all_link_result[:, child_link_id] = child_link_transform
 
-    result = {"link": all_link_result, "joint": all_joint_result}
+    result = {"link": all_link_result, "joint": all_joint_result}   # this includes the pose of mimic joint as well.
     if ret_info:
         result["axes"] = all_joint_axis
     return result
@@ -490,15 +581,19 @@ def batch_jacobian(
 
     if out is None:
         # Transposed version to maximize the write throughput
-        out = torch.zeros(tree.n_dof(), tree.n_link() * 6, batch_size).to(joint_q.device)
+        out = torch.zeros(tree.n_actuated_dof(), tree.n_link() * 6, batch_size).to(joint_q.device)
     
+    out = out * 0.0
     # note: using cuda stream for this will be slower.
     all_link_result_cont = all_link_result.transpose(0, 1).contiguous()
     all_joint_result_cont = all_joint_result.transpose(0, 1).contiguous()
     
+    mimic_joint_info = tree.get_mimic_joint_info(to_id=True)
+
     for i, (joint_id, link_id) in enumerate(jacobian_pairs):
         # calculating the corresponding vector.
         active_joint_id = tree.get_active_joint_id_from_joint_id(joint_id)
+
         link_pose = all_link_result_cont[link_id]     # [B, 4, 4]
         joint_pose = all_joint_result_cont[active_joint_id]  # [B, 4, 4]
         
@@ -509,12 +604,21 @@ def batch_jacobian(
         joint_axis_pose_in_base = torch.bmm(joint_pose[:, :3, :3], joint_axis_pose.unsqueeze(-1)).squeeze(-1)
         offset = link_pose[:, :3, 3] - joint_pose[:, :3, 3] # [B, 3]
         
+
+        if joint_id in mimic_joint_info:
+            write_joint_id = mimic_joint_info[joint_id].parent_actuated_id
+            multiplier = mimic_joint_info[joint_id].multiplier
+
+        else:
+            write_joint_id = tree.get_actuated_joint_id_from_joint_id(joint_id)
+            multiplier = 1.0
+
         if joint_type == 'revolute':
-            out[active_joint_id, link_id * 6:link_id * 6 + 3, :] = torch.cross(joint_axis_pose_in_base, offset, dim=-1).transpose(-1, -2)
-            out[active_joint_id, link_id * 6 + 3:link_id * 6 + 6, :] = joint_axis_pose_in_base.transpose(-1, -2)
+            out[write_joint_id, link_id * 6:link_id * 6 + 3, :] += torch.cross(joint_axis_pose_in_base, offset, dim=-1).transpose(-1, -2) * multiplier
+            out[write_joint_id, link_id * 6 + 3:link_id * 6 + 6, :] += joint_axis_pose_in_base.transpose(-1, -2) * multiplier
         
         elif joint_type == 'prismatic':
-            out[active_joint_id, link_id * 6:link+id * 6 + 3, :] = joint_axis_pose_in_base.transpose(-1, -2)
+            out[write_joint_id, link_id * 6:link_id * 6 + 3, :] += joint_axis_pose_in_base.transpose(-1, -2) * multiplier
 
     jac_result = out.permute(2, 1, 0).contiguous()
     if ret_fk:
@@ -670,7 +774,7 @@ def batch_contact_ik(
         joint_limit:                [n_dof, 2]
     
     Returns: a dict
-        - q:                          [batch_size, n_joint]           # the solved result.
+        - q:                          [batch_size, n_actuated_dof]           # the solved result.
         - success:                    [batch_size,]                   # whether ik finds the solution successfully.
     """
 
@@ -683,11 +787,12 @@ def batch_contact_ik(
     batch_size = target_pos.size(0)
     device = target_pos.device
     n_dof = tree.n_dof()
+    n_actuated_dof = tree.n_actuated_dof()
     n_link = tree.n_link()
     n_contact = contact_link_ids.shape[1]
     
     t = time.time()
-    joint_limit_lower, joint_limit_upper = tree.get_active_joint_limit()
+    joint_limit_lower, joint_limit_upper = tree.get_actuated_joint_limit()
     # print("lower", joint_limit_lower)
     # print("upper", joint_limit_upper)
 
@@ -697,7 +802,7 @@ def batch_contact_ik(
     if single_update_mode:
         q = q_init.unsqueeze(1)
     else:
-        q = torch.rand(batch_size, n_retry, n_dof).to(device) * (joint_limit_upper - joint_limit_lower) + joint_limit_lower
+        q = torch.rand(batch_size, n_retry, n_actuated_dof).to(device) * (joint_limit_upper - joint_limit_lower) + joint_limit_lower
 
     # buffers.
     if all_joint_result_buffer is not None:
@@ -722,7 +827,7 @@ def batch_contact_ik(
     if jac_result_buffer is not None:
         jac_result = jac_result_buffer * 0
     else:
-        jac_result = torch.zeros(n_dof, n_link * 6, batch_size * n_retry).to(device)
+        jac_result = torch.zeros(n_actuated_dof, n_link * 6, batch_size * n_retry).to(device)
 
     contact_pos_in_linkf_0 = contact_pos_in_linkf                                               # this is in the corresponding link frame!
     contact_pos_in_linkf_1 = contact_pos_in_linkf + contact_normal_in_linkf * normal_beta       # this is in the corresponding link frame!
@@ -738,13 +843,12 @@ def batch_contact_ik(
     if J_err_buffer is not None:
         J_err = J_err_buffer * 0
     else:
-        J_err = torch.zeros(batch_size, n_retry, n_contact, 6, n_dof).to(device)    # [b, n, n_contact, 6, joint]
+        J_err = torch.zeros(batch_size, n_retry, n_contact, 6, n_actuated_dof).to(device)    # [b, n, n_contact, 6, joint]
 
-    q = q.view(-1, n_dof)
+    q = q.view(-1, n_actuated_dof)
     batch_idx = torch.arange(batch_size).to(device).unsqueeze(-1).expand(-1, n_contact)
 
     for i in tqdm(range(max_iter), desc="Contact IK", disable=single_update_mode or not verbose):
-        t = time.time()
         result = batch_jacobian(
             tree,
             q, 
@@ -753,10 +857,9 @@ def batch_contact_ik(
             out=jac_result,
             ret_fk=True
         )
-        
-        t = time.time()
+
         J = result["J"]                                                         # [b*n, n_link*6, n_joint]
-        J = J.view(batch_size, n_retry, -1, 6, n_dof)                           # [b, n, n_link, 6, n_joint]
+        J = J.view(batch_size, n_retry, -1, 6, n_actuated_dof)                           # [b, n, n_link, 6, n_joint]
         link_pose = result["fk"]["link"]                                        # [b*n, n_link, 4, 4]
         link_pose = link_pose.view(batch_size, n_retry, n_link, 4, 4)
         link_pose_contact = link_pose[batch_idx, :, contact_link_ids, :, :]     # [b, n_contact, n, 4, 4]
@@ -775,15 +878,15 @@ def batch_contact_ik(
         contact_pos_in_linkf_1_in_base_exp = contact_pos_in_linkf_1_in_base.view(batch_size, n_retry, n_contact, 3)  # [b, n, n_contact, 3]
 
         # v_b = v_a + w_a x r_ab.
-        t = time.time()
+
         J_err[:, :, :, :3, :] = J_contact[:, :, :, :3, :] + torch.cross(J_contact[:, :, :, 3:, :], contact_pos_in_linkf_0_in_base_exp.unsqueeze(-1), dim=3)
         J_err[:, :, :, 3:, :] = alpha_contact_matching * (J_contact[:, :, :, :3, :] + torch.cross(J_contact[:, :, :, 3:, :], contact_pos_in_linkf_1_in_base_exp.unsqueeze(-1), dim=3))
 
-        J_err_flatten = J_err.view(batch_size * n_retry, -1, n_dof)                     # [b*n, n_contact * 6, joint]
+        J_err_flatten = J_err.view(batch_size * n_retry, -1, n_actuated_dof)                     # [b*n, n_contact * 6, joint]
 
         contact_pos_0_in_base = contact_pos_in_linkf_0_in_base + flatten_link_transl    # [b * n * n_contact, 3]
         contact_pos_1_in_base = contact_pos_in_linkf_1_in_base + flatten_link_transl    # [b * n * n_contact, 3]
-        t = time.time()
+
         dx = compute_contact_ik_dx(
             contact_pos_0_in_base.view(batch_size, n_retry, n_contact, 3),
             contact_pos_1_in_base.view(batch_size, n_retry, n_contact, 3),
@@ -792,13 +895,12 @@ def batch_contact_ik(
             alpha_contact_matching=alpha_contact_matching
         )   # [b * n, n_contact*6]
     
-        t = time.time()
 
         dq = compute_dq_new_tall(
-            J_err_flatten.view(-1, n_contact*6, n_dof),                     # [b*n, n_contact*6, n_dof]
+            J_err_flatten.view(-1, n_contact*6, n_actuated_dof),            # [b*n, n_contact*6, n_actuated_dof]
             dx.view(-1, n_contact*6, 1),                                    # [b*n, n_contact*6]
             regularization
-        ) # [b*n, n_dof]
+        ) # [b*n, n_actuated_dof]
 
         q = q + step_size * dq.squeeze(dim=-1)
         q = torch.clip(q, joint_limit_lower, joint_limit_upper)

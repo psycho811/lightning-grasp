@@ -113,7 +113,8 @@ def main(args):
     # Robot Collision & Kinematics Metadata
     self_collision_link_pairs = tree.get_self_collision_check_link_pairs(
         link_body_id=decomposed_mesh_data['link_body_id'],
-        whitelist_link=[]
+        whitelist_link=[],
+        whitelist_pairs=robot.get_white_list_pairs()
     )
 
     self_collision_link_pairs = torch.from_numpy(self_collision_link_pairs).cuda().int()
@@ -148,6 +149,7 @@ def main(args):
     gpu_memory_pool = IKGPUBufferPool(
         n_dof=tree.n_dof(), 
         n_link=tree.n_link(), 
+        n_actuated_dof=tree.n_actuated_dof(),
         max_batch=min([batch_size_outer * batch_size_inner, 65536]), 
         retry=10
     )

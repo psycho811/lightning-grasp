@@ -24,7 +24,7 @@ def batch_assign_free_finger_and_filter(
         else:
             assigned_results[k] = v 
 
-    joint_limit_lower, joint_limit_upper = tree.get_active_joint_limit()
+    joint_limit_lower, joint_limit_upper = tree.get_actuated_joint_limit()
     joint_limit_lower = torch.from_numpy(joint_limit_lower).to(object_point.device)
     joint_limit_upper = torch.from_numpy(joint_limit_upper).to(object_point.device)
     

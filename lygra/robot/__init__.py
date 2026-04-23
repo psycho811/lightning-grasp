@@ -9,7 +9,6 @@ from lygra.robot.shadow import Shadow
 from lygra.robot.leap import Leap
 from lygra.robot.dclaw import DClaw
 
-
 class RobotFactory:
     _registry = {}
 
@@ -47,7 +46,6 @@ RobotFactory.register("allegro", Allegro)
 RobotFactory.register("shadow", Shadow)
 RobotFactory.register("leap", Leap)
 RobotFactory.register("dclaw", DClaw)
-
 
 def build_robot(name, urdf_path=None, **kwargs):
     return RobotFactory.create(name, urdf_path=urdf_path, **kwargs)
