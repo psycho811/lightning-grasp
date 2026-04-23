@@ -20,6 +20,8 @@ class RobotInterface(ABC):
         return 
 
     def get_white_list_pairs(self):
+        # we skip self-collision check for the returned pairs.
+        # example: [['base_link', 'link1'], ['base_link', 'link2']]
         return []
 
     def get_default_urdf_path(self):

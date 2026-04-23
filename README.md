@@ -7,6 +7,13 @@ Public repository for the Lightning Grasp system. [paper](https://arxiv.org/abs/
 </center>
 
 ![](misc/teaser.png)
+
+
+## Update Notes
+Apr 23, 2026: We added mimic joint support.
+
+
+
 ## System Requirements
 - Operating System: Ubuntu 22.04 or 24.04
 - GPU: NVIDIA GPU with Pascal, Volta/Turing, Ampere, or Ada Lovelace architecture
@@ -89,12 +96,12 @@ The system includes several tunable parameters to optimize performance for your 
 ## Setup Your Model
 There are several examples in ``lygra/robot/`` folder. You can refer to ``lygra/robot/allegro.py`` for an tutorial. Basically, you simply need to setup a config object that specifies the contact field rules (i.e. which patches to use defined by allowed normals), canonical object space (i.e. where to initialize the object), and some URDF metadata. That's it!
 
+**Setting Up Collision** You may need to ``get_white_list_pairs()`` the function to disable certain hand self collision check. If you find lightning grasp failed to synthesize grasp on your new model, is it very likely that the collision filter is not setup properly.
+
 ## Notes
 **Known Limitations**
 
 This released version has the following limitations.
-- The kinematics module does not support mimic joint. The hand DoF must be fully actuated.
-
 - Do not use huge objects for now. I am working on a version that clamps the object mesh and resample the point cloud after placement.
 
 **Comments**
