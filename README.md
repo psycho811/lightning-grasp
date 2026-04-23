@@ -110,6 +110,9 @@ However, we observe that synthesis speed for hands with mimic joints is currentl
 This released version has the following limitations.
 - Do not use huge objects for now. I am working on a version that clamps the object mesh and resample the point cloud after placement.
 
+**Known Issues**
+We observe that the current implementation does not properly release GPU memory with `torch==2.11.0`. You will see CUDA OOM error if you run the main loop repeatedly. Downgrading to `torch==2.7.0` resolves this issue.
+
 **Comments**
 
 For the grasp synthesis with grippers, consider using specialized approaches for higher efficiency (i.e. directly sample antipodal points on a ray.).
