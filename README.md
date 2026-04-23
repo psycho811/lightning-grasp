@@ -102,7 +102,7 @@ You may need to use `get_white_list_pairs()` to disable specific self-collision 
 **Mimic Joints and Joint Order**  
 You can define mimic joints in your URDF using the `<mimic>` tag. Lightning grasp will automatically detect these joints. Ensure that `get_active_joints()` in the corresponding python configuration class **includes** mimic joints. The generated joint positions `q` follow the ordering defined in `get_active_joints()`, but the returned values exclude mimic joints. For example, if the active joints are `[j0, j1, j2, j3]` and `j1` and `j3` are mimic joints, then Lightning Grasp will return `q` ordered as `[j0, j2]`.
 
-
+However, we observe that synthesis speed for hands with mimic joints is currently slow (~10–200 SPS on A100/RTX 4090). This feature is still experimental and may require additional tuning.
 
 ## Notes
 **Known Limitations**
