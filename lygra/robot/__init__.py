@@ -8,6 +8,7 @@ from lygra.robot.allegro import Allegro
 from lygra.robot.shadow import Shadow
 from lygra.robot.leap import Leap
 from lygra.robot.dclaw import DClaw
+from lygra.robot.dex5_hand import Dex5_hand
 
 class RobotFactory:
     _registry = {}
@@ -46,6 +47,7 @@ RobotFactory.register("allegro", Allegro)
 RobotFactory.register("shadow", Shadow)
 RobotFactory.register("leap", Leap)
 RobotFactory.register("dclaw", DClaw)
+RobotFactory.register("dex5", Dex5_hand)
 
 def build_robot(name, urdf_path=None, **kwargs):
     return RobotFactory.create(name, urdf_path=urdf_path, **kwargs)

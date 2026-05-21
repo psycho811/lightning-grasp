@@ -11,6 +11,33 @@ from lygra import gem
 from tqdm import tqdm
 
 
+def _empty_ik_result(
+    tree,
+    contact_link_ids,
+    contact_pos_in_linkf,
+    contact_normal_in_linkf,
+    target_contact_pos,
+    target_contact_normal,
+    object_pose,
+    q_mask=None
+):
+    n_dof = tree.n_actuated_dof()
+
+    if q_mask is None:
+        q_mask = torch.zeros((0, n_dof), dtype=torch.bool, device=object_pose.device)
+
+    return {
+        "q": torch.zeros((0, n_dof), dtype=contact_pos_in_linkf.dtype, device=contact_pos_in_linkf.device),
+        "q_mask": q_mask[:0],
+        "object_pose": object_pose[:0],
+        "target_pos": target_contact_pos[:0],
+        "target_normal": target_contact_normal[:0],
+        "contact_pos": contact_pos_in_linkf[:0],
+        "contact_normal": contact_normal_in_linkf[:0],
+        "contact_link_id": contact_link_ids[:0],
+    }
+
+
 def batch_ik(
     tree,
     contact_ids,             # [batch, n_contact]
@@ -31,6 +58,17 @@ def batch_ik(
 ):
     batch_size = contact_ids.shape[0]
     contact_link_ids = contact_parent_ids[contact_ids]  # [batch, n_contact]
+
+    if batch_size == 0:
+        return _empty_ik_result(
+            tree,
+            contact_link_ids,
+            contact_pos_in_linkf,
+            contact_normal_in_linkf,
+            target_contact_pos,
+            target_contact_normal,
+            object_pose
+        )
 
     ik_result = batch_contact_ik(
         tree,
@@ -103,11 +141,23 @@ def batch_contact_adjustment(
     ik_step_size=0.4,
     ik_regularization=2e-4
 ):
-    batch_size = contact_ids.shape[0]
+    batch_size = q_init.shape[0]
 
     if batch_size == 0:
-        print("No solution found.")
-        return 
+        print("No solution found after coarse IK.")
+        result = _empty_ik_result(
+            tree,
+            contact_link_ids,
+            contact_pos_in_linkf,
+            contact_normal_in_linkf,
+            target_contact_pos,
+            target_contact_normal,
+            object_pose,
+            q_mask=q_mask
+        )
+        if ret_mesh_buffer:
+            result["mesh_buffer"] = None
+        return result
 
     v_tensor = torch.from_numpy(mesh['v']).cuda().float()
     f_tensor = torch.from_numpy(mesh['f']).cuda().int()

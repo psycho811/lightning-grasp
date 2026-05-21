@@ -17,6 +17,9 @@ def batch_assign_free_finger_and_filter(
     decomposed_mesh_data,
     n_assign_retry=5
 ):
+    if len(result["q"]) == 0:
+        return result
+
     assigned_results = {}
     for k, v in result.items():
         if isinstance(v, torch.Tensor):

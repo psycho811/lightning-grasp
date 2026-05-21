@@ -51,6 +51,8 @@ def get_args():
     parser.add_argument('--object_pose_sampling_strategy', type=str, default='canonical', help='Object pose sampling strategy')
     parser.add_argument('--visualize', action='store_true', help='Enable visualization')
     parser.add_argument('--object_mesh_path', type=str, default="./assets/object/ycb/013_apple/textured.obj", help='Path to the object mesh')
+    parser.add_argument('--save', action='store_true', help='Save the grasping results')
+
 
     args = parser.parse_args()
     return args
@@ -272,7 +274,35 @@ def main(args):
 
     n_result = len(result['q'])
     print("Number of Solutions:", n_result)
-   
+
+    if n_result == 0:
+        print("No valid grasp solutions found for the current setup.")
+        return
+
+    # save results
+    if args.save:
+        def tensor_to_numpy(obj):
+            if isinstance(obj, torch.Tensor):
+                return obj.detach().cpu().numpy()
+            elif isinstance(obj, dict):
+                return {k: tensor_to_numpy(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [tensor_to_numpy(v) for v in obj]
+            else:
+                return obj
+            
+        from datetime import datetime
+        save_dir = f"./grasp_results/{args.robot}/{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        print(f"Saving results to {save_dir}")
+        import os
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, "grasp_solutions.npz")
+        # result tensor -> numpy, for better compatibility.
+        save_dict = {key: tensor_to_numpy(value) for key, value in result.items()}
+        np.savez(save_path, **save_dict)
+        print(f"Results saved to {save_path}")
+
     # -----------------
     # Visualize Results
     # -----------------
