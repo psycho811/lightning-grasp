@@ -1,0 +1,23 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug demo.py dex5 visualize",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/demo.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}", 
+            "python": "/root/epfs/intern02/miniconda3/envs/lygra/bin/python",
+            "args": [
+                "--visualize",
+                "--robot",
+                "dex5"
+            ],
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        }
+    ]
+}
