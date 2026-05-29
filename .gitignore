@@ -218,3 +218,5 @@ LICENSE
 *.ply
 *.dae
 assets/object/
+
+*.npz

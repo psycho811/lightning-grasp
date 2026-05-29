@@ -205,7 +205,7 @@ class ContactField:
 
 
     def generate_contact_field(self, tree, n_iter=80000, device='cuda'):
-        joint_limit_lower, joint_limit_upper = tree.get_active_joint_limit()
+        joint_limit_lower, joint_limit_upper = tree.get_actuated_joint_limit()
         joint_limit_lower = torch.from_numpy(joint_limit_lower).to(device)
         joint_limit_upper = torch.from_numpy(joint_limit_upper).to(device)        
         q = torch.rand(n_iter, joint_limit_lower.shape[-1]).to(device) * (joint_limit_upper - joint_limit_lower) + joint_limit_lower
