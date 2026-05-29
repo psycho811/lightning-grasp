@@ -108,7 +108,8 @@ def main(args):
     # But I am too lazy to move, python dict is so comforting for prototyping.
 
     # result = np.load(f"./grasp_results/{args.robot}/1779344930/grasp_solutions.npz", allow_pickle=True)
-    result = np.load(f"./grasp_results/{args.robot}/20260521_064310/grasp_solutions.npz", allow_pickle=True)
+    # result = np.load(f"./grasp_results/{args.robot}/20260521_064310/grasp_solutions.npz", allow_pickle=True)
+    result = np.load(f"./grasp_results/{args.robot}/20260528_3_demo/grasp_solutions.npz", allow_pickle=True)
 
     n_result = len(result['q'])
     print(f"Found {n_result} grasping solutions.")

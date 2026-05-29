@@ -13,8 +13,8 @@ class Dex5_hand(RobotInterface):
         """
             Canonical Space for placing objects (we randomly select an object surface point and drag it into this box)
         """
-        box_min = np.array([0.02, -0.05, 0.05], dtype=np.float32)
-        box_max = np.array([0.08, 0.06, 0.13], dtype=np.float32)
+        box_min = np.array([0.04, -0.05, 0.04], dtype=np.float32)
+        box_max = np.array([0.1, 0.06, 0.12], dtype=np.float32)
         return box_min, box_max 
 
     def get_white_list_pairs(self):
@@ -32,7 +32,7 @@ class Dex5_hand(RobotInterface):
         """
             Default path to your robot URDF
         """
-        return './assets/hand/dex5_hand/Dex5-URDF-R_teleop-manus_wocolor.urdf'
+        return './assets/hand/dex5_hand/Dex5-URDF-R_teleop-manus_wocolor_mimic_limit.urdf'
 
     def get_contact_field_config(self):
         """
@@ -50,17 +50,27 @@ class Dex5_hand(RobotInterface):
             "static_link": {}
         }
 
-        for link in [
+        distal_links = [
             "Link_14R",
             "Link_24R",
             "Link_34R",
             "Link_44R",
             "Link_54R",
-        ]:
+        ]
+        front_poking_links = {} #{"Link_24R", "Link_34R", "Link_44R", "Link_54R"}
+
+        for link in distal_links:
+            disabled_normals = [
+                (np.array([0.0, 0.0, -1.0]), 3.1415926 * 0.49999)
+            ]
+
+            if link in front_poking_links:
+                # Filter the front tip-cap so the index finger cannot "poke"
+                # the object with the fingertip and pass as a grasp contact.
+                disabled_normals.append((np.array([1.0, 0.0, 0.0]), 0.55))
+
             config["movable_link"][link] = {
-                "disabled_normal": [
-                    (np.array([0.0, 0.0, -1.0]), 3.1415926 * 0.49999)
-                ]
+                "disabled_normal": disabled_normals
             }
 
         config["static_link"]["base_link00"] = {
