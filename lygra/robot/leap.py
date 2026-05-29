@@ -33,7 +33,7 @@ class Leap(RobotInterface):
             config["movable_link"][link] = {
                 "disabled_normal": [
                     (np.array([0.0, 0.0, -1.0]), 1.57),
-                    (np.array([0.0, 0.0,  1.0]), 0.5),    # 过滤 tip cap（纯顶端，≈28°锥体）
+                    (np.array([1.0, 0.0,  0.0]), 0.5),    # 过滤 tip cap（纯顶端，≈28°锥体）
                 ]
             }
 
