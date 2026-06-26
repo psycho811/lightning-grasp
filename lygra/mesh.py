@@ -10,6 +10,8 @@ import open3d as o3d
 import torch
 import numpy as np
 import trimesh
+from lygra.utils.numpy_compat import ensure_numpy_legacy_aliases
+ensure_numpy_legacy_aliases()
 from urdfpy import URDF
 from pathlib import Path 
 
