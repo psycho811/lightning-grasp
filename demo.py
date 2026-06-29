@@ -131,6 +131,15 @@ def main(args):
     dependency_matrix = get_link_dependency_matrix(contact_field, dependency_sets)
     dependency_matrix = dependency_matrix.cuda()
 
+    required_contact_ids = None
+    if args.robot == "wuji":
+        thumb_contact_link_name = "right_finger1_link4"
+        contact_link_names = contact_field.get_all_contact_link_names()
+        if thumb_contact_link_name not in contact_link_names:
+            raise ValueError(f"Required thumb contact link not found: {thumb_contact_link_name}")
+        required_contact_ids = [contact_link_names.index(thumb_contact_link_name)]
+        print(f"Require thumb contact: {thumb_contact_link_name}")
+
     # Contact Field Acceleration Data Structure (LBVH-S2Bundle)
     accel_structure = contact_field.generate_acceleration_structure(method=cf_accel)
 
@@ -199,7 +208,8 @@ def main(args):
             object_points=points, 
             object_normals=normals, 
             object_poses=object_poses,
-            condition=condition
+            condition=condition,
+            required_contact_ids=required_contact_ids
         )
 
         # Search Contact Points in Contact Domain

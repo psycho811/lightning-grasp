@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch 
+import sys
 from lygra import gem
 from lygra.contact_set import get_dependency_matrix, get_link_dependency_matrix, sample_independent_set
 
@@ -34,7 +35,8 @@ def sample_pose_and_contact_from_interaction(
     condition={},
     contact_domain_resolution=500,
     n_sample_repeat=4,
-    min_contact_domain_size=5
+    min_contact_domain_size=5,
+    required_contact_ids=None
 ):
     """ This function returns randomly sampled, valid contact domains with their associated object poses.
 
@@ -50,6 +52,7 @@ def sample_pose_and_contact_from_interaction(
         object_normals:             [n_object_point, 3]
         object_poses:               [n_object_point, 4, 4]
         contact_domain_resolution:  int. The resolution of returned contact domain.
+        required_contact_ids:       optional contact link ids that must be included in every sampled contact set.
     
     Returns:
         contact_domain_pos:         [n_valid_pose, n_contact, contact_domain_resolution, 3]
@@ -63,18 +66,63 @@ def sample_pose_and_contact_from_interaction(
     initial_mask = torch.zeros_like(interaction_score)
     initial_mask[torch.where(interaction_score > min_contact_domain_size)] = 1
 
-    success = False
-    while n_contact >= 2:
-        contact_ids = sample_independent_set(n_contact, initial_mask, dependency_matrix)                # [n_batch_outer, n_contact]
+    if required_contact_ids is None:
+        required_contact_ids = torch.empty(0, dtype=torch.long, device=interaction_matrix.device)
+    else:
+        required_contact_ids = torch.as_tensor(
+            required_contact_ids,
+            dtype=torch.long,
+            device=interaction_matrix.device
+        ).flatten()
+
+    if required_contact_ids.numel() > 0:
+        if required_contact_ids.unique().numel() != required_contact_ids.numel():
+            raise ValueError("required_contact_ids must be unique.")
+        if required_contact_ids.numel() > n_contact:
+            raise ValueError("Number of required contacts cannot exceed n_contact.")
+        if (required_contact_ids < 0).any() or (required_contact_ids >= initial_mask.size(1)).any():
+            raise ValueError("required_contact_ids contains an out-of-range contact id.")
+
+    min_n_contact = max(2, required_contact_ids.numel())
+    if n_contact < min_n_contact:
+        raise ValueError("n_contact is smaller than the minimum number of contacts required.")
+
+    while n_contact >= min_n_contact:
+        n_remaining_contact = n_contact - required_contact_ids.numel()
+
+        if required_contact_ids.numel() > 0:
+            required_ids = required_contact_ids.unsqueeze(0).expand(initial_mask.size(0), -1)
+            required_valid = initial_mask[:, required_contact_ids].bool().all(dim=-1)
+
+            if n_remaining_contact > 0:
+                remaining_mask = initial_mask.clone()
+                required_dependency = dependency_matrix[required_contact_ids].bool().any(dim=0)
+                remaining_mask[:, required_dependency] = 0
+                remaining_mask[:, required_contact_ids] = 0
+
+                remaining_ids = sample_independent_set(
+                    n_remaining_contact,
+                    remaining_mask,
+                    dependency_matrix
+                )  # [n_batch_outer, n_remaining_contact]
+
+                contact_ids = torch.cat((required_ids, remaining_ids), dim=-1)
+                valid_mask = required_valid & (remaining_ids >= 0).all(dim=-1)
+            else:
+                contact_ids = required_ids
+                valid_mask = required_valid
+        else:
+            contact_ids = sample_independent_set(n_contact, initial_mask, dependency_matrix)                # [n_batch_outer, n_contact]
+            valid_mask = (contact_ids >= 0).all(dim=-1)
     
-        valid_batch_idx = torch.where((contact_ids >= 0).all(dim=-1))
+        valid_batch_idx = torch.where(valid_mask)
         if len(valid_batch_idx[0]) > 0:
             break
         else:
             # too hard, resample.
             print("Resampling")
             n_contact -= 1 
-            if n_contact == 1:
+            if n_contact < min_n_contact:
                 print("Search Failed")
                 sys.exit(-1)
 
@@ -84,7 +132,7 @@ def sample_pose_and_contact_from_interaction(
     object_poses = object_poses[valid_batch_idx]  # [B, 4, 4]
     filtered_condition = {k: v[valid_batch_idx] for k, v in condition.items()}
 
-    batch_indices = torch.arange(contact_ids.size(0)).unsqueeze(1).expand(-1, contact_ids.size(1))  # [B, N_contact]
+    batch_indices = torch.arange(contact_ids.size(0), device=contact_ids.device).unsqueeze(1).expand(-1, contact_ids.size(1))  # [B, N_contact]
     contact_domain_mask = interaction_matrix[batch_indices, contact_ids]                            # [B, N_contact, N]
     assert contact_domain_mask.any(dim=-1).all(), "Contact domain must have at least one element."
  
