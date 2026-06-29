@@ -109,7 +109,8 @@ def main(args):
 
     # result = np.load(f"./grasp_results/{args.robot}/1779344930/grasp_solutions.npz", allow_pickle=True)
     # result = np.load(f"./grasp_results/{args.robot}/20260521_064310/grasp_solutions.npz", allow_pickle=True)
-    result = np.load(f"./grasp_results/{args.robot}/20260528_3_demo/grasp_solutions.npz", allow_pickle=True)
+    # /home/orangerain/workspace/grasp_generation/lightning-grasp/grasp_results/wuji/20260629_4_0.3
+    result = np.load(f"./grasp_results/{args.robot}/20260629_4_0.3/grasp_solutions.npz", allow_pickle=True)
 
     n_result = len(result['q'])
     print(f"Found {n_result} grasping solutions.")

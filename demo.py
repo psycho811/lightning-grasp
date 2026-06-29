@@ -302,7 +302,7 @@ def main(args):
                 return obj
             
         from datetime import datetime
-        save_dir = f"./grasp_results/{args.robot}/{datetime.now().strftime('%Y%m%d')}_{args.n_contact}_demo"
+        save_dir = f"./grasp_results/{args.robot}/{datetime.now().strftime('%Y%m%d')}_{args.n_contact}_0.3"
         
         print(f"Saving results to {save_dir}")
         import os

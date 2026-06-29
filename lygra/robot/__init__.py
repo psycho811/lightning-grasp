@@ -10,6 +10,7 @@ from lygra.robot.leap import Leap
 from lygra.robot.dclaw import DClaw
 from lygra.robot.dex5_hand import Dex5_hand
 from lygra.robot.brainco import Brainco
+from lygra.robot.wuji import Wuji
 
 class RobotFactory:
     _registry = {}
@@ -50,6 +51,6 @@ RobotFactory.register("leap", Leap)
 RobotFactory.register("dclaw", DClaw)
 RobotFactory.register("dex5", Dex5_hand)
 RobotFactory.register("brainco", Brainco)
-
+RobotFactory.register("wuji", Wuji)
 def build_robot(name, urdf_path=None, **kwargs):
     return RobotFactory.create(name, urdf_path=urdf_path, **kwargs)

@@ -220,3 +220,5 @@ LICENSE
 assets/object/
 
 *.npz
+
+assets/hand
