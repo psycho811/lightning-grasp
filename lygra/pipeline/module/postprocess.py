@@ -9,13 +9,46 @@ from lygra.pipeline.module.collision import batch_filter_collision
 import torch
 
 
+def batch_filter_collision_chunked(
+    tree,
+    q,
+    object_pose,
+    object_point,
+    self_collision_link_pairs,
+    decomposed_mesh_data,
+    chunk_size=512
+):
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive.")
+
+    masks = []
+    for start in range(0, len(q), chunk_size):
+        end = min(start + chunk_size, len(q))
+        mask = batch_filter_collision(
+            tree,
+            q[start:end],
+            object_pose[start:end],
+            object_point,
+            self_collision_link_pairs,
+            decomposed_mesh_data,
+            ret_mask_only=True
+        )
+        masks.append(mask.bool())
+
+    if len(masks) == 0:
+        return torch.zeros((0,), dtype=torch.bool, device=q.device)
+
+    return torch.cat(masks, dim=0)
+
+
 def batch_assign_free_finger_and_filter(
     tree,
     result,
     object_point,
     self_collision_link_pairs,
     decomposed_mesh_data,
-    n_assign_retry=5
+    n_assign_retry=5,
+    collision_batch_size=512
 ):
     if len(result["q"]) == 0:
         return result
@@ -42,14 +75,14 @@ def batch_assign_free_finger_and_filter(
         free_q = torch.rand_like(q) * (joint_limit_upper - joint_limit_lower) + joint_limit_lower
         tmp_result["q"] = free_q * (1 - q_mask) + q * q_mask 
         
-        success_mask = batch_filter_collision(
+        success_mask = batch_filter_collision_chunked(
             tree,
             tmp_result["q"],
             tmp_result["object_pose"],
             object_point,
             self_collision_link_pairs,
             decomposed_mesh_data,
-            ret_mask_only=True
+            chunk_size=collision_batch_size
         )
        
         for k, v in tmp_result.items():
@@ -73,6 +106,6 @@ def batch_assign_free_finger_and_filter(
 
     for k, v in assigned_results.items():
         if isinstance(result[k], torch.Tensor):
-            assigned_results[k] = torch.cat(assigned_results[k], dim=0)
+            assigned_results[k] = torch.cat(v, dim=0) if len(v) > 0 else result[k][:0]
 
     return assigned_results
