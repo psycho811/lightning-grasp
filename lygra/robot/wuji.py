@@ -14,29 +14,29 @@ class Wuji(RobotInterface):
         finger_links = [
             "right_finger1_link1",
             "right_finger1_link2",
-            "right_finger1_link3",
-            "right_finger1_link4_back",
-            "right_finger1_link4_front",
+            # "right_finger1_link3",
+            # "right_finger1_link4_back",
+            # "right_finger1_link4_front",
             "right_finger2_link1",
             "right_finger2_link2",
-            "right_finger2_link3",
-            "right_finger2_link4_back",
-            "right_finger2_link4_front",
+            # "right_finger2_link3",
+            # "right_finger2_link4_back",
+            # "right_finger2_link4_front",
             "right_finger3_link1",
             "right_finger3_link2",
-            "right_finger3_link3",
-            "right_finger3_link4_back",
-            "right_finger3_link4_front",
+            # "right_finger3_link3",
+            # "right_finger3_link4_back",
+            # "right_finger3_link4_front",
             "right_finger4_link1",
             "right_finger4_link2",
-            "right_finger4_link3",
-            "right_finger4_link4_back",
-            "right_finger4_link4_front",
+            # "right_finger4_link3",
+            # "right_finger4_link4_back",
+            # "right_finger4_link4_front",
             "right_finger5_link1",
             "right_finger5_link2",
-            "right_finger5_link3",
-            "right_finger5_link4_back",
-            "right_finger5_link4_front",
+            # "right_finger5_link3",
+            # "right_finger5_link4_back",
+            # "right_finger5_link4_front",
         ]
         palm_pairs = [[palm, link] for palm in palm_links for link in finger_links]
         split_adjacency_pairs = [
@@ -259,8 +259,8 @@ class Wuji(RobotInterface):
         # 生成苹果比较正常
         # box_min = np.array([0.065, -0.02, 0.05], dtype=np.float32)
         # box_max = np.array([0.115, 0.02, 0.1], dtype=np.float32)
-        box_min = np.array([0.06, -0.02, 0.07], dtype=np.float32)
-        box_max = np.array([0.11, 0.02, 0.13], dtype=np.float32)
+        box_min = np.array([0.055, -0.02, 0.07], dtype=np.float32)
+        box_max = np.array([0.105, 0.02, 0.13], dtype=np.float32)
         return box_min, box_max 
 
     def get_default_urdf_path(self):
