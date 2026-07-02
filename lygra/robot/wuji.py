@@ -259,8 +259,8 @@ class Wuji(RobotInterface):
         # 生成苹果比较正常
         # box_min = np.array([0.065, -0.02, 0.05], dtype=np.float32)
         # box_max = np.array([0.115, 0.02, 0.1], dtype=np.float32)
-        box_min = np.array([0.055, -0.02, 0.07], dtype=np.float32)
-        box_max = np.array([0.105, 0.02, 0.13], dtype=np.float32)
+        box_min = np.array([0.05, -0.02, 0.07], dtype=np.float32)
+        box_max = np.array([0.10, 0.02, 0.13], dtype=np.float32)
         return box_min, box_max 
 
     def get_default_urdf_path(self):
