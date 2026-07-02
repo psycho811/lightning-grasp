@@ -38,6 +38,25 @@ def _empty_ik_result(
     }
 
 
+def _concat_result_chunks(chunks):
+    if len(chunks) == 0:
+        return {}
+
+    result = {}
+    keys = chunks[0].keys()
+    for k in keys:
+        values = [chunk[k] for chunk in chunks if k in chunk]
+        if len(values) == 0:
+            continue
+
+        if isinstance(values[0], torch.Tensor):
+            result[k] = torch.cat(values, dim=0)
+        else:
+            result[k] = values[0]
+
+    return result
+
+
 def batch_ik(
     tree,
     contact_ids,             # [batch, n_contact]
@@ -54,7 +73,8 @@ def batch_ik(
     err_thresh=0.02,
     max_iter=12,
     step_size=0.4,
-    filter=True
+    filter=True,
+    ik_batch_size=None
 ):
     batch_size = contact_ids.shape[0]
     contact_link_ids = contact_parent_ids[contact_ids]  # [batch, n_contact]
@@ -69,6 +89,34 @@ def batch_ik(
             target_contact_normal,
             object_pose
         )
+
+    if ik_batch_size is not None and batch_size > ik_batch_size:
+        if ik_batch_size <= 0:
+            raise ValueError("ik_batch_size must be positive.")
+
+        chunks = []
+        for start in tqdm(range(0, batch_size, ik_batch_size), desc="Contact IK Chunks"):
+            end = min(start + ik_batch_size, batch_size)
+            chunks.append(batch_ik(
+                tree=tree,
+                contact_ids=contact_ids[start:end],
+                contact_parent_ids=contact_parent_ids,
+                contact_pos_in_linkf=contact_pos_in_linkf[start:end],
+                contact_normal_in_linkf=contact_normal_in_linkf[start:end],
+                target_contact_pos=target_contact_pos[start:end],
+                target_contact_normal=target_contact_normal[start:end],
+                object_pose=object_pose[start:end],
+                gpu_memory_pool=gpu_memory_pool,
+                n_dof=n_dof,
+                n_retry=n_retry,
+                regularization=regularization,
+                err_thresh=err_thresh,
+                max_iter=max_iter,
+                step_size=step_size,
+                filter=filter,
+                ik_batch_size=None
+            ))
+        return _concat_result_chunks(chunks)
 
     ik_result = batch_contact_ik(
         tree,
@@ -139,7 +187,8 @@ def batch_contact_adjustment(
     projection_orientation_weight=0.01,
     error_tolerance=0.004,
     ik_step_size=0.4,
-    ik_regularization=2e-4
+    ik_regularization=2e-4,
+    adjustment_batch_size=None
 ):
     batch_size = q_init.shape[0]
 
@@ -157,6 +206,48 @@ def batch_contact_adjustment(
         )
         if ret_mesh_buffer:
             result["mesh_buffer"] = None
+        return result
+
+    if adjustment_batch_size is not None and batch_size > adjustment_batch_size:
+        if adjustment_batch_size <= 0:
+            raise ValueError("adjustment_batch_size must be positive.")
+
+        chunks = []
+        for start in tqdm(range(0, batch_size, adjustment_batch_size), desc="Kinematics Finetuning Chunks"):
+            end = min(start + adjustment_batch_size, batch_size)
+            chunk_contact_ids = contact_ids[start:end] if isinstance(contact_ids, torch.Tensor) else contact_ids
+            chunks.append(batch_contact_adjustment(
+                tree=tree,
+                mesh=mesh,
+                q_init=q_init[start:end],
+                q_mask=q_mask[start:end],
+                contact_ids=chunk_contact_ids,
+                contact_link_ids=contact_link_ids[start:end],
+                contact_pos_in_linkf=contact_pos_in_linkf[start:end],
+                contact_normal_in_linkf=contact_normal_in_linkf[start:end],
+                target_contact_pos=target_contact_pos[start:end],
+                target_contact_normal=target_contact_normal[start:end],
+                object_pose=object_pose[start:end],
+                gpu_memory_pool=gpu_memory_pool,
+                n_iter=n_iter,
+                project_per_n_step=project_per_n_step,
+                ret_mesh_buffer=False,
+                projection_orientation_weight=projection_orientation_weight,
+                error_tolerance=error_tolerance,
+                ik_step_size=ik_step_size,
+                ik_regularization=ik_regularization,
+                adjustment_batch_size=None
+            ))
+
+        result = _concat_result_chunks(chunks)
+        if ret_mesh_buffer:
+            result["mesh_buffer"] = {
+                "v": torch.from_numpy(mesh['v']).cuda().float(),
+                "f": torch.from_numpy(mesh['f']).cuda().int(),
+                "n": torch.from_numpy(mesh['n']).cuda().float(),
+                "vi": torch.from_numpy(mesh['vi']).cuda().int(),
+                "fi": torch.from_numpy(mesh['fi']).cuda().int()
+            }
         return result
 
     v_tensor = torch.from_numpy(mesh['v']).cuda().float()

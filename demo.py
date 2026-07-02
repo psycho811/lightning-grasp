@@ -45,6 +45,7 @@ def get_args():
     parser.add_argument('--n_contact', type=int, default=3, help='Number of non-static contacts to optimize')
     parser.add_argument('--n_sample_point', type=int, default=2048, help='Number of sampled object points')
     parser.add_argument('--ik_finetune_iter', type=int, default=5, help='Number of IK finetune iterations')
+    parser.add_argument('--ik_batch_size', type=int, default=4096, help='Batch size for chunked IK and IK GPU buffers')
     parser.add_argument('--zo_lr_sigma', type=float, default=5, help='Sigma of the Zeroth-order Optimizer')
     parser.add_argument('--postprocess_collision_batch_size', type=int, default=512, help='Batch size for chunked postprocess collision filtering')
 
@@ -69,12 +70,16 @@ def main(args):
     n_contact = args.n_contact
     n_sample_point = args.n_sample_point
     ik_finetune_iter = args.ik_finetune_iter
+    ik_batch_size = args.ik_batch_size
     cf_accel = args.cf_accel
     object_pose_sampling_strategy = args.object_pose_sampling_strategy
     visualize = args.visualize
     object_mesh_path = args.object_mesh_path
     zo_lr_sigma = args.zo_lr_sigma
     postprocess_collision_batch_size = args.postprocess_collision_batch_size
+
+    if ik_batch_size <= 0:
+        raise ValueError("--ik_batch_size must be positive.")
 
     # -----------------
     # Preparation Stage 
@@ -163,7 +168,7 @@ def main(args):
         n_dof=tree.n_dof(), 
         n_link=tree.n_link(), 
         n_actuated_dof=tree.n_actuated_dof(),
-        max_batch=min([batch_size_outer * batch_size_inner, 65536]), 
+        max_batch=min([batch_size_outer * batch_size_inner, ik_batch_size, 65536]), 
         retry=10
     )
 
@@ -250,7 +255,8 @@ def main(args):
             target_contact_pos=target_contact_pos.float(),
             target_contact_normal=target_contact_normal.float(),
             object_pose=object_poses.float(),
-            gpu_memory_pool=gpu_memory_pool
+            gpu_memory_pool=gpu_memory_pool,
+            ik_batch_size=ik_batch_size
         )
         
         # Kinematics Optimization (II)
@@ -269,7 +275,8 @@ def main(args):
             object_pose=result["object_pose"],
             n_iter=ik_finetune_iter,
             gpu_memory_pool=gpu_memory_pool,
-            ret_mesh_buffer=True
+            ret_mesh_buffer=True,
+            adjustment_batch_size=ik_batch_size
         )
 
         # Postprocessing: 
