@@ -46,6 +46,7 @@ def get_args():
     parser.add_argument('--n_sample_point', type=int, default=2048, help='Number of sampled object points')
     parser.add_argument('--ik_finetune_iter', type=int, default=5, help='Number of IK finetune iterations')
     parser.add_argument('--zo_lr_sigma', type=float, default=5, help='Sigma of the Zeroth-order Optimizer')
+    parser.add_argument('--postprocess_collision_batch_size', type=int, default=512, help='Batch size for chunked postprocess collision filtering')
 
     parser.add_argument('--cf_accel', type=str, default='lbvhs2', help='Contact Field Acceleration Structure')
     parser.add_argument('--object_pose_sampling_strategy', type=str, default='canonical', help='Object pose sampling strategy')
@@ -73,6 +74,7 @@ def main(args):
     visualize = args.visualize
     object_mesh_path = args.object_mesh_path
     zo_lr_sigma = args.zo_lr_sigma
+    postprocess_collision_batch_size = args.postprocess_collision_batch_size
 
     # -----------------
     # Preparation Stage 
@@ -133,7 +135,7 @@ def main(args):
 
     required_contact_ids = None
     if args.robot == "wuji":
-        thumb_contact_link_name = "right_finger1_link4"
+        thumb_contact_link_name = "right_finger1_link4_front"
         contact_link_names = contact_field.get_all_contact_link_names()
         if thumb_contact_link_name not in contact_link_names:
             raise ValueError(f"Required thumb contact link not found: {thumb_contact_link_name}")
@@ -279,7 +281,8 @@ def main(args):
             result=result,
             object_point=points_all,
             self_collision_link_pairs=self_collision_link_pairs,
-            decomposed_mesh_data=decomposed_mesh_data
+            decomposed_mesh_data=decomposed_mesh_data,
+            collision_batch_size=postprocess_collision_batch_size
         )
 
     n_result = len(result['q'])
