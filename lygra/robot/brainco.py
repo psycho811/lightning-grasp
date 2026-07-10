@@ -15,37 +15,49 @@ class Brainco(RobotInterface):
             "right_thumb_CMP_Link",
             "right_thumb_CMR_Link",
             "right_thumb_MCP_Link",
-            "right_thumb_PIP_Link",
-            "right_thumb_DIP_Link",
-            "right_thumb_tip_Link",
+            # "right_thumb_PIP_Link",
+            # "right_thumb_DIP_Link",
+            # "right_thumb_tip_Link",
             "right_index_MPR_Link",
             "right_index_MCP_Link",
-            "right_index_PIP_Link",
-            "right_index_DIP_Link",
-            "right_index_tip_Link",
+            # "right_index_PIP_Link",
+            # "right_index_DIP_Link",
+            # "right_index_tip_Link",
             "right_middle_MPR_Link",
             "right_middle_MCP_Link",
-            "right_middle_PIP_Link",
-            "right_middle_DIP_Link",
-            "right_middle_tip_Link",
+            # "right_middle_PIP_Link",
+            # "right_middle_DIP_Link",
+            # "right_middle_tip_Link",
             "right_ring_MPR_Link",
             "right_ring_MCP_Link",
-            "right_ring_PIP_Link",
-            "right_ring_DIP_Link",
-            "right_ring_tip_Link",
+            # "right_ring_PIP_Link",
+            # "right_ring_DIP_Link",
+            # "right_ring_tip_Link",
             "right_little_MPR_Link",
             "right_little_MCP_Link",
-            "right_little_PIP_Link",
-            "right_little_DIP_Link",
-            "right_little_tip_Link",
+            # "right_little_PIP_Link",
+            # "right_little_DIP_Link",
+            # "right_little_tip_Link",
         ]
-        return [[palm, link] for palm in palm_links for link in finger_links]
+        pip_dip_pairs = [
+            ["right_thumb_PIP_Link", "right_thumb_DIP_Link_back"],
+            ["right_thumb_PIP_Link", "right_thumb_DIP_Link_front"],
+            ["right_index_PIP_Link", "right_index_DIP_Link_back"],
+            ["right_index_PIP_Link", "right_index_DIP_Link_front"],
+            ["right_middle_PIP_Link", "right_middle_DIP_Link_back"],
+            ["right_middle_PIP_Link", "right_middle_DIP_Link_front"],
+            ["right_ring_PIP_Link", "right_ring_DIP_Link_back"],
+            ["right_ring_PIP_Link", "right_ring_DIP_Link_front"],
+            ["right_little_PIP_Link", "right_little_DIP_Link_back"],
+            ["right_little_PIP_Link", "right_little_DIP_Link_front"],
+        ]
+        return [[palm, link] for palm in palm_links for link in finger_links]  + pip_dip_pairs
 
     def get_canonical_space(self):
         """
             Canonical Space for placing objects (we randomly select an object surface point and drag it into this box)
         """
-        box_min = np.array([0.06, -0.01, 0.08], dtype=np.float32)
+        box_min = np.array([0.055, -0.02, 0.08], dtype=np.float32)
         box_max = np.array([0.11, 0.04, 0.13], dtype=np.float32)
         return box_min, box_max 
 
@@ -53,7 +65,7 @@ class Brainco(RobotInterface):
         """
             Default path to your robot URDF
         """
-        return './assets/hand/brainco/urdf/Revo3_Right.urdf'
+        return './assets/hand/brainco/urdf/Revo3_Right_finger_split.urdf'
 
     def get_contact_field_config(self):
         """
@@ -72,11 +84,11 @@ class Brainco(RobotInterface):
         }
 
         for link in [ 
-            "right_index_DIP_Link",
-            "right_little_DIP_Link",
-            "right_middle_DIP_Link",
-            "right_ring_DIP_Link",
-            "right_thumb_DIP_Link",
+            "right_index_DIP_Link_front",
+            "right_little_DIP_Link_front",
+            "right_middle_DIP_Link_front",
+            "right_ring_DIP_Link_front",
+            "right_thumb_DIP_Link_front",
             
         ]:
             config["movable_link"][link] = {
