@@ -20,7 +20,7 @@ from lygra.utils.transform_utils import batch_object_transform
 from lygra.pipeline.module.object_placement import sample_object_pose, get_object_pose_sampling_args
 from lygra.pipeline.module.contact_query import batch_object_all_contact_fields_interaction
 from lygra.pipeline.module.contact_collection import sample_pose_and_contact_from_interaction
-from lygra.pipeline.module.contact_optimization import search_contact_point
+from lygra.pipeline.module.contact_optimization import build_gravity_condition, search_contact_point
 from lygra.pipeline.module.kinematics import batch_ik, batch_contact_adjustment
 from lygra.pipeline.module.collision import batch_filter_collision
 from lygra.pipeline.module.postprocess import batch_assign_free_finger_and_filter
@@ -48,6 +48,10 @@ def get_args():
     parser.add_argument('--ik_batch_size', type=int, default=4096, help='Batch size for chunked IK and IK GPU buffers')
     parser.add_argument('--zo_lr_sigma', type=float, default=5, help='Sigma of the Zeroth-order Optimizer')
     parser.add_argument('--postprocess_collision_batch_size', type=int, default=512, help='Batch size for chunked postprocess collision filtering')
+    parser.add_argument('--gravity_optimization', action='store_true', help='Include gravity as an external wrench in contact optimization')
+    parser.add_argument('--gravity_scale', type=float, default=0.1, help='Magnitude of the gravity force term in contact-force units')
+    parser.add_argument('--gravity_direction', type=float, nargs=3, default=[0.0, 0.0, 1.0], help='Gravity direction in hand/world frame; default is reversed for palm-up scenes')
+    parser.add_argument('--contact_score_threshold', type=float, default=0.15, help='Maximum wrench score accepted after contact optimization')
 
     parser.add_argument('--cf_accel', type=str, default='lbvhs2', help='Contact Field Acceleration Structure')
     parser.add_argument('--object_pose_sampling_strategy', type=str, default='canonical', help='Object pose sampling strategy')
@@ -77,6 +81,7 @@ def main(args):
     object_mesh_path = args.object_mesh_path
     zo_lr_sigma = args.zo_lr_sigma
     postprocess_collision_batch_size = args.postprocess_collision_batch_size
+    contact_score_threshold = args.contact_score_threshold
 
     if ik_batch_size <= 0:
         raise ValueError("--ik_batch_size must be positive.")
@@ -194,6 +199,14 @@ def main(args):
             sampling_args=get_object_pose_sampling_args(object_pose_sampling_strategy, robot)
         )
 
+        if args.gravity_optimization:
+            condition.update(build_gravity_condition(
+                object_poses=object_poses,
+                center_of_mass=object.get_center_of_mass(),
+                gravity_direction=args.gravity_direction,
+                gravity_scale=args.gravity_scale
+            ))
+
         # Contact Field BVH Traversal
         interaction_matrix_hand_point_idx = batch_object_all_contact_fields_interaction(
             object_pos=points, 
@@ -231,7 +244,8 @@ def main(args):
             batch_size=batch_size_inner,
             return_hand_frame=True,
             condition=condition,
-            zo_lr=zo_lr
+            zo_lr=zo_lr,
+            threshold=contact_score_threshold
         )
 
         contact_ids, local_contact_ids = contact_field.sample_contact_ids(

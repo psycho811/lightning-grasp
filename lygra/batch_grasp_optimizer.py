@@ -51,6 +51,22 @@ def batched_nnls(A, b, num_iters=15, lr=1.5e-1, init_sol=None):
     return x.squeeze(2), val
 
 
+def _prepare_optional_vector(vector, flat_batch, device, dtype, name):
+    if vector is None:
+        return None
+
+    vector = vector.to(device=device, dtype=dtype)
+    if vector.shape[-1] != 3:
+        raise ValueError(f"{name} must have last dimension 3.")
+
+    vector = vector.reshape(-1, 3)
+    if vector.shape[0] == 1:
+        return vector.expand(flat_batch, -1)
+    if vector.shape[0] != flat_batch:
+        raise ValueError(f"{name} batch size {vector.shape[0]} does not match contact batch size {flat_batch}.")
+    return vector
+
+
 def compute_score(contact_pos, contact_normal):
     # construct and solve nnls problems.
     n = contact_pos.shape[1]
@@ -127,13 +143,17 @@ def compute_wrench_score_vectorized(
     contact_normal, 
     valid_mask=None, 
     init_sol=None, 
-    wrench_alpha=10
+    wrench_alpha=10,
+    gravity_force=None,
+    center_of_mass=None
 ):
     '''
     Args:
         contact_pos:    [..., n, 3]
         contact_normal: [..., n, 3]
         valid_mask:     [..., n]        which contact vectors should be used in optimization (val=1).
+        gravity_force:  [..., 3]        external force in the same frame as contact_pos/contact_normal.
+        center_of_mass: [..., 3]        point where gravity_force is applied, same frame as contact_pos.
 
     Returns:
         score:          [...]
@@ -144,6 +164,15 @@ def compute_wrench_score_vectorized(
     n = contact_pos.shape[-2]
     contact_pos = contact_pos.reshape(-1, n, 3)
     contact_normal = contact_normal.reshape(-1, n, 3)
+    flat_batch = contact_pos.shape[0]
+    gravity_force = _prepare_optional_vector(
+        gravity_force, flat_batch, contact_pos.device, contact_pos.dtype, "gravity_force"
+    )
+    center_of_mass = _prepare_optional_vector(
+        center_of_mass, flat_batch, contact_pos.device, contact_pos.dtype, "center_of_mass"
+    )
+    if gravity_force is not None and center_of_mass is None:
+        center_of_mass = torch.zeros_like(gravity_force)
 
     all_A = []
     all_b = []
@@ -156,7 +185,13 @@ def compute_wrench_score_vectorized(
         f_unit = contact_normal[:, 1:, :]
         wrench = torch.cross(x, f_unit, dim=-1).permute(0, 2, 1)    # [b, 3, n] 
 
-        b_nw = torch.zeros_like(b_nf)
+        if gravity_force is not None:
+            p0 = contact_pos[:, 0, :]
+            gravity_torque = torch.cross(center_of_mass - p0, gravity_force, dim=-1)
+            b_nf = b_nf - gravity_force
+            b_nw = -gravity_torque * wrench_alpha
+        else:
+            b_nw = torch.zeros_like(b_nf)
         A_nw = wrench * wrench_alpha
 
         A = torch.cat((A_nf, A_nw), dim=1)          # [b, 6, n-1]
@@ -181,7 +216,8 @@ def compute_wrench_score_vectorized(
 
     sol, score = batched_nnls(all_A, all_b, num_iters=nnls_num_iters, init_sol=init_sol)   # [b * n]
     score = score.view(-1, n)
-    torch.cuda.synchronize()
+    if contact_pos.is_cuda:
+        torch.cuda.synchronize()
 
     if valid_mask is not None:
         valid_mask = valid_mask.view(-1, n)  
@@ -266,7 +302,9 @@ def optimize_step(
     init_nnls_sol=None,
     extra_contact_pos=None,
     extra_contact_normal=None,
-    extra_contact_mask=None
+    extra_contact_mask=None,
+    gravity_force=None,
+    center_of_mass=None
 ):
     '''
     Args:
@@ -304,11 +342,18 @@ def optimize_step(
                 torch.cat((contact_pos, extra_contact_pos), dim=-2), 
                 torch.cat((contact_normal, extra_contact_normal), dim=-2),
                 extra_contact_mask.contiguous(),
-                init_sol=init_nnls_sol
+                init_sol=init_nnls_sol,
+                gravity_force=gravity_force,
+                center_of_mass=center_of_mass
             )
 
         else:
-            best_score, nnls_sol = compute_wrench_score_vectorized(contact_pos, contact_normal)
+            best_score, nnls_sol = compute_wrench_score_vectorized(
+                contact_pos,
+                contact_normal,
+                gravity_force=gravity_force,
+                center_of_mass=center_of_mass
+            )
 
     else:
         nnls_sol = None
@@ -338,11 +383,18 @@ def optimize_step(
                 torch.cat((next_contact_pos, extra_contact_pos), dim=-2), 
                 torch.cat((next_contact_normal, extra_contact_normal), dim=-2),
                 extra_contact_mask,
-                init_sol=nnls_sol
+                init_sol=nnls_sol,
+                gravity_force=gravity_force,
+                center_of_mass=center_of_mass
             )
 
         else:
-            score, _ = compute_wrench_score_vectorized(next_contact_pos, next_contact_normal)
+            score, _ = compute_wrench_score_vectorized(
+                next_contact_pos,
+                next_contact_normal,
+                gravity_force=gravity_force,
+                center_of_mass=center_of_mass
+            )
 
         improve_idx = torch.where(score < best_score)
         best_score[improve_idx] = score[improve_idx]
@@ -366,7 +418,9 @@ def optimize(
     zo_lr=0.005,
     extra_contact_pos=None,
     extra_contact_normal=None,
-    extra_contact_mask=None
+    extra_contact_mask=None,
+    gravity_force=None,
+    center_of_mass=None
 ):
     """
     Args:
@@ -398,11 +452,30 @@ def optimize(
                 init_nnls_sol=init_nnls_sol,
                 extra_contact_pos=extra_contact_pos,
                 extra_contact_normal=extra_contact_normal,
-                extra_contact_mask=extra_contact_mask
+                extra_contact_mask=extra_contact_mask,
+                gravity_force=gravity_force,
+                center_of_mass=center_of_mass
             )
             init_nnls_sol = nnls_sol
 
-    score, _ = compute_wrench_score_vectorized(contact_pos, contact_normal)
+    if extra_contact_pos is not None:
+        extra_contact_mask = torch.cat(
+            (torch.ones(*contact_pos.shape[:-1]).to(extra_contact_mask.device), extra_contact_mask), dim=-1
+        )
+        score, _ = compute_wrench_score_vectorized(
+            torch.cat((contact_pos, extra_contact_pos), dim=-2),
+            torch.cat((contact_normal, extra_contact_normal), dim=-2),
+            extra_contact_mask.contiguous(),
+            gravity_force=gravity_force,
+            center_of_mass=center_of_mass
+        )
+    else:
+        score, _ = compute_wrench_score_vectorized(
+            contact_pos,
+            contact_normal,
+            gravity_force=gravity_force,
+            center_of_mass=center_of_mass
+        )
 
     return contact_pos, contact_normal, contact_point_idx, score
 
@@ -459,7 +532,8 @@ class BatchedZerothOrderKinematicGraspOptimizer:
             "contact_point_idx": contact_point_idx
         }
 
-    def optimize(self, solution, condition={}, step=20, zo_step=6, zo_lr=0.005):
+    def optimize(self, solution, condition=None, step=20, zo_step=6, zo_lr=0.005):
+        condition = {} if condition is None else condition
         contact_pos, contact_normal, contact_point_idx, score = optimize(
             solution["contact_pos"],
             solution["contact_normal"],
@@ -471,6 +545,8 @@ class BatchedZerothOrderKinematicGraspOptimizer:
             extra_contact_pos=condition.get("extra_contact_pos", None),
             extra_contact_normal=condition.get("extra_contact_normal", None),
             extra_contact_mask=condition.get("extra_contact_mask", None),
+            gravity_force=condition.get("gravity_force", None),
+            center_of_mass=condition.get("center_of_mass", None),
             zo_step=zo_step,
             zo_lr=zo_lr
         )

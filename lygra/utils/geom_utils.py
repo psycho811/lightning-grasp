@@ -22,6 +22,12 @@ class MeshObject:
     def get_area(self):
         return self.mesh.area 
 
+    def get_center_of_mass(self):
+        center = np.asarray(self.mesh.center_mass)
+        if center.shape != (3,) or not np.isfinite(center).all():
+            center = np.asarray(self.mesh.vertices).mean(axis=0)
+        return center
+
 
 def get_tangent_plane(batch_vector):
     ''' Get the tangent planes of vectors.

@@ -92,6 +92,7 @@ The system includes several tunable parameters to optimize performance for your 
   - For GPUs with large memory (≥ 12GB), increase both batch sizes for better performance
   - Start with default values and scale up until memory limits are reached
   - Some typical setups: (128, 256), (192, 256), (256, 256), (256, 512).
+- **`--gravity_optimization`**: Adds an external gravity wrench to contact optimization. The default `--gravity_direction 0 0 1` is reversed for palm-up scenes; tune `--gravity_scale` and `--contact_score_threshold` together.
 
 ## Setup Your Model
 There are several examples in ``lygra/robot/`` folder. You can refer to ``lygra/robot/allegro.py`` for an tutorial. Basically, you simply need to setup a config object that specifies the contact field rules (i.e. which patches to use defined by allowed normals), canonical object space (i.e. where to initialize the object), and some URDF metadata. That's it!
